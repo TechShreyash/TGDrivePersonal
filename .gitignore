@@ -1,0 +1,12 @@
+*.pyc
+*.data
+t.py
+t2.py
+cache
+downloads
+logs.txt
+.env
+failed.txt
+manager.log
+.venv
+.vscode

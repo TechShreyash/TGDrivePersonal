@@ -1,0 +1,10 @@
+https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip
+tgcrypto
+uvicorn
+fastapi[all]
+python-dotenv
+aiofiles
+aiohttp
+curl_cffi
+techzdl>=1.2.6
+tqdm
