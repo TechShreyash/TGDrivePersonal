@@ -1,5 +1,5 @@
-root_folder = "/mnt/2b8b61d3-0169-469a-9a86-08ab209c93e5/Storage"
-root_name = "Data"
+root_folder = "/mnt/2b8b61d3-0169-469a-9a86-08ab209c93e5/Storage"  # Path of the local folder to upload
+root_name = "Data"  # Name of the root folder in the TGDrive
 
 import os
 import sys
