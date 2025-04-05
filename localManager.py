@@ -141,6 +141,13 @@ async def limited_uploader_progress():
     logger.info("Upload progress tracking ended")
 
 
+def isFailedFile(lpath):
+    """Check if a file is marked as failed."""
+    with open("failed.txt", "r") as f:
+        failed_files = f.read().splitlines()
+    return lpath in failed_files
+
+
 async def start():
     logger.info("Initializing clients...")
     await initialize_clients()
@@ -162,6 +169,10 @@ async def start():
         global TOTAL_UPLOAD
         files = get_all_files(lpath)
         for file in files:
+            if isFailedFile(file):
+                logger.info(f"Skipping failed file: {file}")
+                continue
+
             fname = os.path.basename(file)
             # Check if the file already exists in the cloud.
             new_cpath = getCpath(fname, cpath)
@@ -202,6 +213,7 @@ async def start():
 
     # Recursively create folders and schedule file uploads.
     def create_folders(lpath, cpath):
+        logger.info(f"Processing local folder: {lpath}")
         folders = get_all_folders(lpath)
         for new_lpath in folders:
             folder_name = os.path.basename(new_lpath)
