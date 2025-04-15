@@ -1,18 +1,15 @@
-import logging, asyncio
-
-logging.basicConfig(
-    filename="logs.txt", filemode="w", format="%(name)s - %(levelname)s - %(message)s"
-)
-
-LOG_UPDATES = []
+import logging
+from tqdm import tqdm
 
 
-class ListHandler(logging.Handler):
+class TqdmLoggingHandler(logging.Handler):
     def emit(self, record):
-        global LOG_UPDATES
-        # Append each log message to the list
-        log_message = self.format(record)
-        LOG_UPDATES.append(log_message)
+        try:
+            msg = self.format(record)
+            tqdm.write(msg)
+            self.flush()
+        except Exception:
+            self.handleError(record)
 
 
 class Logger:
@@ -21,15 +18,19 @@ class Logger:
         self.logger.setLevel(level)
         self.formatter = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
 
-        # StreamHandler for console output
-        self.stream_handler = logging.StreamHandler()
-        self.stream_handler.setFormatter(self.formatter)
-        self.logger.addHandler(self.stream_handler)
+        # Remove existing handlers to prevent duplicate logs
+        if self.logger.hasHandlers():
+            self.logger.handlers.clear()
 
-        # Custom ListHandler to capture log messages in a list
-        # self.list_handler = ListHandler()
-        # self.list_handler.setFormatter(self.formatter)
-        # self.logger.addHandler(self.list_handler)
+        # FileHandler for logging to a file
+        file_handler = logging.FileHandler("logs.txt", mode="w")
+        file_handler.setFormatter(self.formatter)
+        self.logger.addHandler(file_handler)
+
+        # Custom TqdmLoggingHandler for console output
+        stream_handler = TqdmLoggingHandler()
+        stream_handler.setFormatter(self.formatter)
+        self.logger.addHandler(stream_handler)
 
     def debug(self, message):
         self.logger.debug(message)
@@ -45,21 +46,3 @@ class Logger:
 
     def critical(self, message):
         self.logger.critical(message)
-
-
-# For future use, for showing logs in a channel
-async def log_updater(logger_bot):
-    global LOG_UPDATES
-    while True:
-        if len(LOG_UPDATES) == 0:
-            await asyncio.sleep(1)
-            continue
-
-        message = LOG_UPDATES.pop(0)
-
-        try:
-            await logger_bot.send_message(
-                "LOGGER_CHANNEL", message, disable_web_page_preview=True
-            )
-        except Exception as e:
-            pass

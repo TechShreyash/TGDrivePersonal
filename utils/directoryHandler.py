@@ -1,8 +1,7 @@
-import io
 from pathlib import Path
-import config
-from pyrogram.types import InputMediaDocument
-import pickle, os, random, string, asyncio
+import config, dill
+from pyrogram.types import InputMediaDocument, Message
+import os, random, string, asyncio
 from utils.logger import Logger
 from datetime import datetime, timezone
 
@@ -17,7 +16,8 @@ def getRandomID():
     global DRIVE_DATA
     while True:
         id = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
-
+        if not DRIVE_DATA:
+            return id
         if id not in DRIVE_DATA.used_ids:
             DRIVE_DATA.used_ids.append(id)
             return id
@@ -41,6 +41,9 @@ class Folder:
         self.upload_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.auth_hashes = []
 
+    def __reduce__(self):
+        return (self.__class__, (self.name, self.path), self.__dict__)
+
 
 class File:
     def __init__(
@@ -51,7 +54,6 @@ class File:
         path: str,
     ) -> None:
         self.name = name
-        self.type = type
         self.file_id = file_id
         self.id = getRandomID()
         self.size = size
@@ -59,6 +61,13 @@ class File:
         self.trash = False
         self.path = path[:-1] if path[-1] == "/" else path
         self.upload_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def __reduce__(self):
+        return (
+            self.__class__,
+            (self.name, self.file_id, self.size, self.path),
+            self.__dict__,
+        )
 
 
 class NewDriveData:
@@ -69,7 +78,7 @@ class NewDriveData:
 
     def save(self) -> None:
         with open(drive_cache_path, "wb") as f:
-            pickle.dump(self, f)
+            dill.dump(self, f)
 
         self.isUpdated = True
 
@@ -348,7 +357,7 @@ async def loadDriveData():
     client = get_client()
     try:
         try:
-            msg = await client.get_messages(
+            msg: Message = await client.get_messages(
                 config.STORAGE_CHANNEL, config.DATABASE_BACKUP_MSG_ID
             )
         except Exception as e:
@@ -357,8 +366,11 @@ async def loadDriveData():
 
         if msg.document.file_name == "drive.data":
             dl_path = await msg.download()
-            with open(dl_path, "rb") as f:
-                DRIVE_DATA = pickle.load(f)
+            import dill.detect
+
+            with dill.detect.trace():
+                with open(dl_path, "rb") as f:
+                    DRIVE_DATA = dill.load(f)
 
             logger.info("Drive data loaded from backup file from telegram")
         else:

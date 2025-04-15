@@ -1,26 +1,22 @@
 root_folder = "/mnt/2b8b61d3-0169-469a-9a86-08ab209c93e5/Storage"  # Path of the local folder to upload
 root_name = "Data"  # Name of the root folder in the TGDrive
 
+
 import os
 import sys
 import asyncio
 import time
 from tqdm import tqdm
-import logging
 
+from utils.logger import Logger
 from config import BOT_TOKENS
 from utils.clients import initialize_clients
 from utils.directoryHandler import backup_drive_data, getRandomID
 from utils.extra import convert_class_to_dict
 from utils.uploader import start_file_uploader
 
-# Configure logging: Log messages will be output to the console and saved in manager.log
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("manager.log", mode="a")],
-)
-logger = logging.getLogger(__name__)
+
+logger = Logger("localManager")
 
 
 # Get immediate subdirectories (not recursive) from the given folder.
@@ -30,7 +26,6 @@ def get_all_folders(root_folder):
         for d in os.listdir(root_folder)
         if os.path.isdir(os.path.join(root_folder, d))
     ]
-    logger.info(f"Found folders in {root_folder}: {folders}")
     return folders
 
 
@@ -41,7 +36,6 @@ def get_all_files(root_folder):
         for f in os.listdir(root_folder)
         if os.path.isfile(os.path.join(root_folder, f))
     ]
-    logger.info(f"Found files in {root_folder}: {files}")
     return files
 
 
@@ -105,6 +99,7 @@ async def limited_uploader_progress():
         unit_scale=True,
         desc="Uploading",
         dynamic_ncols=True,
+        colour="green",
     ) as pbar:
         prev_done = 0
         while True:
@@ -149,6 +144,11 @@ def isFailedFile(lpath):
 
 
 async def start():
+
+    if not os.path.exists("failed.txt"):
+        with open("failed.txt", "w") as file:
+            pass
+
     logger.info("Initializing clients...")
     await initialize_clients()
 
@@ -159,7 +159,7 @@ async def start():
         await asyncio.sleep(3)
         logger.info("Waiting for DRIVE_DATA to be initialized...")
 
-    max_concurrent_tasks = len(BOT_TOKENS)
+    max_concurrent_tasks = min(4, len(BOT_TOKENS))
     logger.info(f"Maximum concurrent upload tasks set to: {max_concurrent_tasks}")
 
     global RUNNING_IDS, TOTAL_UPLOAD
@@ -216,14 +216,15 @@ async def start():
         logger.info(f"Processing local folder: {lpath}")
         folders = get_all_folders(lpath)
         for new_lpath in folders:
-            folder_name = os.path.basename(new_lpath)
+            folder_name: str = os.path.basename(new_lpath)
+            if folder_name.startswith("."):
+                continue
             new_cpath = getCpath(folder_name, cpath)
             if not new_cpath:
                 logger.info(
                     f"Creating cloud folder for local folder '{folder_name}' under {cpath}"
                 )
                 new_cpath = DRIVE_DATA.new_folder(cpath, folder_name)
-                logger.info(f"Created cloud folder '{folder_name}' at {new_cpath}")
             # Schedule uploads for files in the current folder.
             upload_files(new_lpath, new_cpath)
             # Recursively process subfolders.
@@ -256,5 +257,6 @@ async def start():
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(start())
+    # loop = asyncio.get_event_loop()
+    # loop.run_until_complete(start())
+    asyncio.run(start())
