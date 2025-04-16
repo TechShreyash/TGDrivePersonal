@@ -365,11 +365,8 @@ async def loadDriveData():
 
         if msg.document.file_name == "drive.data":
             dl_path = await msg.download()
-            import dill.detect
-
-            with dill.detect.trace():
-                with open(dl_path, "rb") as f:
-                    DRIVE_DATA = dill.load(f)
+            with open(dl_path, "rb") as f:
+                DRIVE_DATA = dill.load(f)
 
             logger.info("Drive data loaded from Telegram backup.")
         else:
