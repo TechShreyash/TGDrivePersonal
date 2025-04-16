@@ -1,12 +1,13 @@
 root_folder = "/mnt/2b8b61d3-0169-469a-9a86-08ab209c93e5/Storage"  # Path of the local folder to upload
 root_name = "Data"  # Name of the root folder in the TGDrive
 
-
 import os
 import sys
 import asyncio
 import time
 from tqdm import tqdm
+import os
+import signal
 
 from utils.logger import Logger
 from config import BOT_TOKENS
@@ -14,7 +15,6 @@ from utils.clients import initialize_clients
 from utils.directoryHandler import backup_drive_data, getRandomID
 from utils.extra import convert_class_to_dict
 from utils.uploader import start_file_uploader
-
 
 logger = Logger("localManager")
 
@@ -48,8 +48,8 @@ def getCpath(name, cparent):
         folder_data = convert_class_to_dict(folder_data, isObject=True, showtrash=False)
         for id, data in folder_data["contents"].items():
             if data["name"] == name:
-                logger.info(
-                    f"Found existing cloud folder '{name}' with id {id} under {cparent}"
+                logger.debug(
+                    f"Found existing file/folder '{name}' with id {id} under {cparent}"
                 )
                 return ("/" + data["path"] + id + "/").replace("//", "/")
     except Exception as e:
@@ -73,17 +73,17 @@ async def worker():
         except asyncio.CancelledError:
             break
 
-        logger.info(f"Starting upload for '{fname}' with id {id}")
+        logger.info(f"Uploading file: '{fname}' (ID: {id})")
         try:
             await start_file_uploader(file, id, cpath, fname, file_size, b)
         except Exception as e:
             with open("failed.txt", "a") as f:
                 f.write(f"{file}\n")
-            logger.error(f"Failed to upload '{fname}' with id {id}: {e}")
+            logger.error(f"Failed to upload '{fname}' (ID: {id}): {e}")
         from utils.uploader import PROGRESS_CACHE
 
         PROGRESS_CACHE[id] = ("completed", file_size, file_size)
-        logger.info(f"Completed upload for '{fname}' with id {id}")
+        logger.info(f"Upload completed for file: '{fname}' (ID: {id})")
         upload_queue.task_done()
 
 
@@ -119,6 +119,7 @@ async def limited_uploader_progress():
             prev_done = done
 
             if complete == len(RUNNING_IDS):
+                logger.info("All files have been uploaded successfully.")
                 break
 
             if delta == 0:
@@ -144,7 +145,6 @@ def isFailedFile(lpath):
 
 
 async def start():
-
     if not os.path.exists("failed.txt"):
         with open("failed.txt", "w") as file:
             pass
@@ -157,7 +157,7 @@ async def start():
         from utils.directoryHandler import DRIVE_DATA
 
         await asyncio.sleep(3)
-        logger.info("Waiting for DRIVE_DATA to be initialized...")
+        logger.debug("Waiting for DRIVE_DATA to be initialized...")
 
     max_concurrent_tasks = min(4, len(BOT_TOKENS))
     logger.info(f"Maximum concurrent upload tasks set to: {max_concurrent_tasks}")
@@ -170,7 +170,7 @@ async def start():
         files = get_all_files(lpath)
         for file in files:
             if isFailedFile(file):
-                logger.info(f"Skipping failed file: {file}")
+                logger.warning(f"Skipping previously failed file: {file}")
                 continue
 
             fname = os.path.basename(file)
@@ -178,7 +178,7 @@ async def start():
             new_cpath = getCpath(fname, cpath)
             if new_cpath:
                 logger.info(
-                    f"Skipping upload for '{fname}' as it already exists in cloud at {new_cpath}"
+                    f"File '{fname}' already exists in cloud at {new_cpath}. Skipping upload."
                 )
                 continue
             try:
@@ -186,12 +186,12 @@ async def start():
             except Exception as e:
                 with open("failed.txt", "a") as f:
                     f.write(f"{file}\n")
-                logger.error(f"Failed to get size for '{fname}': {e}")
+                logger.error(f"Failed to get size for file '{fname}': {e}")
                 continue
             id = getRandomID()
             RUNNING_IDS.append(id)
-            logger.info(
-                f"Added file upload task for '{fname}' with id {id} in cloud path {cpath}"
+            logger.debug(
+                f"Enqueued file '{fname}' (ID: {id}) for upload to cloud path {cpath}"
             )
             TOTAL_UPLOAD += file_size
             # Enqueue the upload task. 'b' is set to False.
@@ -206,18 +206,19 @@ async def start():
     else:
         logger.info(f"Creating root folder '{root_name}' in cloud")
         root_cpath = DRIVE_DATA.new_folder("/", root_name)
-        logger.info(f"Created root folder '{root_name}' in cloud at {root_cpath}")
+        logger.info(f"Root folder '{root_name}' created in cloud at {root_cpath}")
 
     # Upload files in the root local folder.
     upload_files(root_folder, root_cpath)
 
     # Recursively create folders and schedule file uploads.
     def create_folders(lpath, cpath):
-        logger.info(f"Processing local folder: {lpath}")
+        logger.debug(f"Processing local folder: {lpath}")
         folders = get_all_folders(lpath)
         for new_lpath in folders:
             folder_name: str = os.path.basename(new_lpath)
             if folder_name.startswith("."):
+                logger.debug(f"Skipping hidden folder: {folder_name}")
                 continue
             new_cpath = getCpath(folder_name, cpath)
             if not new_cpath:
@@ -229,7 +230,7 @@ async def start():
             upload_files(new_lpath, new_cpath)
             # Recursively process subfolders.
             create_folders(new_lpath, new_cpath)
-            logger.info(f"Processed local folder: {new_lpath}")
+        logger.debug(f"Finished processing local folder: {lpath}")
 
     create_folders(root_folder, root_cpath)
     logger.info("All upload tasks have been scheduled. Waiting for completion...")
@@ -253,10 +254,10 @@ async def start():
     logger.info("Backup completed successfully.")
     logger.info("Exiting...")
     await asyncio.sleep(1)
-    sys.exit()
+
+    # Forcefully terminates the program immediately
+    os.kill(os.getpid(), signal.SIGKILL)
 
 
 if __name__ == "__main__":
-    # loop = asyncio.get_event_loop()
-    # loop.run_until_complete(start())
     asyncio.run(start())

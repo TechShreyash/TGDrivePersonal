@@ -3,6 +3,8 @@ from pathlib import Path
 from pyrogram import Client
 from utils.directoryHandler import backup_drive_data, loadDriveData
 from utils.logger import Logger
+import os
+import signal
 
 logger = Logger(__name__)
 
@@ -82,7 +84,10 @@ async def initialize_clients():
     )
     if len(multi_clients) == 0:
         logger.error("No Clients Were Initialized")
-        exit(1)
+
+        # Forcefully terminates the program immediately
+        os.kill(os.getpid(), signal.SIGKILL)
+
     if len(premium_clients) == 0:
         logger.info("No Premium Clients Were Initialized")
 
